@@ -1,0 +1,267 @@
+<title>Matter Intake Extractor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a docket-style two-pane workbench — the email on the left, the extracted intake record on the right. */
+  :root {
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --ink: #1b2430;
+    --muted: #5d6878;
+    --line: #dde1e7;
+    --accent: #2f5d8a;
+    --accent-ink: #ffffff;
+    --flag-bg: #fdf3e1;
+    --flag-ink: #7a4b00;
+    --ok-ink: #2c6b45;
+    --code-bg: #f0f2f5;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161c; --panel: #1a2029; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2c3440;
+      --accent: #6f9fd0; --accent-ink: #0d1218; --flag-bg: #3a2c12; --flag-ink: #f2c46b;
+      --ok-ink: #7cc79a; --code-bg: #141920; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161c; --panel: #1a2029; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2c3440;
+    --accent: #6f9fd0; --accent-ink: #0d1218; --flag-bg: #3a2c12; --flag-ink: #f2c46b;
+    --ok-ink: #7cc79a; --code-bg: #141920; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 40px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+  header h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 4px; text-wrap: balance; }
+  header p { margin: 0; color: var(--muted); max-width: 70ch; }
+  .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 6px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+  .panel h2 { font-size: .8rem; font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 500; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { font: 500 .82rem var(--sans); padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  textarea { width: 100%; min-height: 280px; resize: vertical; font: .9rem/1.55 var(--mono); color: var(--ink); background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button.primary { font: 600 .95rem var(--sans); padding: 10px 18px; border-radius: 6px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+  button.primary:disabled { opacity: .55; cursor: default; }
+  button.ghost { font: 500 .85rem var(--sans); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  button:focus-visible, .chip:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { color: var(--muted); font-size: .88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { width: 38%; color: var(--muted); font-weight: 500; }
+  td ul { margin: 0; padding-left: 18px; }
+  .flagged { background: var(--flag-bg); color: var(--flag-ink); }
+  .flags { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .flags li { background: var(--flag-bg); color: var(--flag-ink); border-radius: 6px; padding: 8px 12px; font-size: .9rem; }
+  .noflags { color: var(--ok-ink); font-size: .9rem; margin: 0; }
+  pre { margin: 0; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; font: .82rem/1.5 var(--mono); overflow-x: auto; }
+  .note { font-size: .82rem; color: var(--muted); }
+  .rules { margin: 0; padding-left: 18px; color: var(--muted); font-size: .86rem; display: grid; gap: 4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Employment matter intake</div>
+    <h1>Matter Intake Extractor</h1>
+    <p>Paste an attorney's request to open a new matter. The tool extracts the intake fields as a table for review and as JSON for SharePoint, iManage and the conflicts search. Anything uncertain is flagged for a person, never guessed.</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="in-h">
+      <h2 id="in-h">Intake email</h2>
+      <div class="samples" id="samples" aria-label="Sample emails (fictional)"></div>
+      <textarea id="email" aria-label="Intake email text" placeholder="Paste an intake email here"></textarea>
+      <div class="row">
+        <button class="primary" id="run">Extract details</button>
+        <span class="status" id="status" role="status"></span>
+      </div>
+      <details>
+        <summary class="note">Extraction rules the model follows</summary>
+        <ol class="rules" id="rulelist"></ol>
+      </details>
+      <p class="note">All sample emails are fictional. Do not paste real client information into this demo.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="out-h">
+      <h2 id="out-h">Extracted intake record</h2>
+      <div id="result"><p class="status">Choose a sample email or paste one, then select Extract details.</p></div>
+      <div id="flagsWrap" hidden>
+        <h2>Flags for review</h2>
+        <ul class="flags" id="flags"></ul>
+      </div>
+      <div id="jsonWrap" hidden>
+        <div class="row" style="justify-content: space-between;">
+          <h2>JSON for downstream systems</h2>
+          <button class="ghost" id="copy">Copy JSON</button>
+        </div>
+        <pre id="json"></pre>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const SAMPLES = [
+  { label: "1 · Brightline", text: `Subject: New matter – Brightline Logistics
+
+Hi Dana,
+
+Please open a new matter for our client Brightline Logistics. A former warehouse manager, Marcus Hale, has filed a wrongful termination claim against them. This will be handled out of our Chicago office under Illinois law. Not urgent, but please have it set up by the end of next week.
+
+Thanks,
+Robert` },
+  { label: "2 · Harbor Point", text: `Subject: URGENT – Harbor Point Hotels
+
+Dana,
+
+Harbor Point Hotels received an EEOC charge of discrimination from a former front desk employee, Lisa Moreno. The response is due in 10 days. Please open this in the Miami office (Florida). This is time-sensitive.
+
+Karen` },
+  { label: "3 · Summit Health", text: `Subject: New matter for Summit Health Partners
+
+Hi Dana,
+
+Summit Health Partners needs help with a wage and hour dispute. Two former nurses, James Patel and Angela Brooks, are claiming unpaid overtime. Please open it in our New York office under New York law. Normal priority.
+
+Thanks,
+Michael` },
+  { label: "4 · Crestview", text: `Subject: quick one
+
+Dana – can you open something for Crestview Bank? They're dealing with a non-compete issue with a guy who left for a competitor, Tom Wheeler I think. Let's run it out of Boston. Thanks!
+
+- Steve` },
+  { label: "5 · Northgate", text: `Subject: Re: Fwd: Northgate call
+
+Dana,
+
+Following up on my call with Northgate Manufacturing. They have an employee, Sarah Kim, who says she was retaliated against after reporting a safety issue. Her lawyer may also be naming the plant supervisor, Dave Russo, personally. Not sure yet whether this is California or Texas since she worked at both plants. Can you get this started? I'd say medium priority but it could escalate.
+
+Paul` }
+];
+
+const RULES = [
+  "Use only information stated in the email. Never guess or fill in missing details.",
+  "If something is missing, write \"Not stated.\"",
+  "If something is uncertain or has more than one possible answer, write \"Unclear\" and explain why in flags_for_review.",
+  "Do not assume the jurisdiction from the office location. Only list a jurisdiction if the email states one.",
+  "Opposing parties will be used for a conflicts check, so never leave anyone out. Include every person or company who is, or may become, an opposing party. Mark anyone uncertain as \"(possible)\" and add a flag explaining why."
+];
+
+const FIELDS = [
+  ["client", "Client"],
+  ["opposing_parties", "Opposing party or parties"],
+  ["matter_type", "Matter type"],
+  ["office", "Office"],
+  ["jurisdiction", "Jurisdiction (state law)"],
+  ["urgency", "Urgency"],
+  ["deadline", "Deadline"],
+  ["requesting_attorney", "Requesting attorney"]
+];
+
+const $ = (id) => document.getElementById(id);
+RULES.forEach((r) => { const li = document.createElement("li"); li.textContent = r; $("rulelist").append(li); });
+
+function pick(i) {
+  $("email").value = SAMPLES[i].text;
+  [...$("samples").children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
+}
+SAMPLES.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "chip"; b.type = "button"; b.textContent = s.label;
+  b.setAttribute("aria-pressed", "false");
+  b.onclick = () => pick(i);
+  $("samples").append(b);
+});
+pick(0);
+
+function buildPrompt(email) {
+  return `You are an intake assistant at a large law firm. Read the email below from an attorney asking to open a new employment matter, and extract the key details so a paralegal can set up the matter.
+
+Rules:
+${RULES.map((r, i) => `${i + 1}. ${r}`).join("\n")}
+
+Reply with only one JSON object using exactly these keys:
+{"client": string, "opposing_parties": [string], "matter_type": string, "office": string, "jurisdiction": string, "urgency": string, "deadline": string, "requesting_attorney": string, "flags_for_review": [string]}
+
+EMAIL:
+${email}`;
+}
+
+const isUnsure = (v) => /not stated|unclear|possible/i.test(String(v));
+
+function render(data) {
+  const table = document.createElement("table");
+  for (const [key, label] of FIELDS) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th"); th.textContent = label;
+    const td = document.createElement("td");
+    const v = data[key];
+    if (Array.isArray(v)) {
+      if (!v.length) td.textContent = "Not stated";
+      else { const ul = document.createElement("ul"); v.forEach((x) => { const li = document.createElement("li"); li.textContent = String(x); ul.append(li); }); td.append(ul); }
+      if (!v.length || v.some(isUnsure)) td.classList.add("flagged");
+    } else {
+      td.textContent = v == null || v === "" ? "Not stated" : String(v);
+      if (isUnsure(td.textContent)) td.classList.add("flagged");
+    }
+    tr.append(th, td); table.append(tr);
+  }
+  $("result").replaceChildren(table);
+
+  const flags = Array.isArray(data.flags_for_review) ? data.flags_for_review : [];
+  $("flags").replaceChildren();
+  if (flags.length) flags.forEach((f) => { const li = document.createElement("li"); li.textContent = String(f); $("flags").append(li); });
+  else { const p = document.createElement("p"); p.className = "noflags"; p.textContent = "Nothing flagged. Ready for matter opening."; $("flags").append(p); }
+  $("flagsWrap").hidden = false;
+
+  $("json").textContent = JSON.stringify(data, null, 2);
+  $("jsonWrap").hidden = false;
+}
+
+const MESSAGES = {
+  not_granted: "Claude access was not allowed for this page, so extraction is unavailable.",
+  sampling_disabled: "Claude is not available for this account.",
+  rate_limited: "Too many requests just now. Wait a minute, then try again.",
+  invalid_json: "The answer came back in the wrong format. Select Extract details to try again.",
+  session_expired: "Your session expired. Sign in again, then try once more."
+};
+
+let sample = null;
+claude.use("sample").then((s) => {
+  sample = s;
+  if (!s) { $("run").disabled = true; $("status").textContent = "Open this page in Claude to run the extraction."; }
+});
+
+$("run").onclick = async () => {
+  const email = $("email").value.trim();
+  if (!email) { $("status").textContent = "Paste an email first."; return; }
+  if (!sample) { $("status").textContent = "Open this page in Claude to run the extraction."; return; }
+  $("run").disabled = true;
+  $("status").textContent = "Extracting...";
+  try {
+    const data = await sample.json(buildPrompt(email), { modelTier: "default" });
+    if (!data || typeof data !== "object") throw { code: "invalid_json" };
+    render(data);
+    $("status").textContent = "Done. Review anything highlighted before the matter moves forward.";
+  } catch (e) {
+    $("status").textContent = MESSAGES[e && e.code] || "Something went wrong. Select Extract details to try again.";
+  } finally {
+    $("run").disabled = false;
+  }
+};
+
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("json").textContent); $("copy").textContent = "Copied"; setTimeout(() => ($("copy").textContent = "Copy JSON"), 1500); }
+  catch { const r = document.createRange(); r.selectNodeContents($("json")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+};
+</script>
